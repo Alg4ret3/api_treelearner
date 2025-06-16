@@ -1,8 +1,13 @@
+# FastAPI para el backend
 fastapi
 uvicorn
-Pillow
-torch
-opencv-python-headless
-numpy
-requests
+
+# PyTorch DEBE ir primero
+torch==2.1.0
+torchvision==0.16.0
+
+# Detectron2 desde GitHub, después de Torch
 detectron2 @ git+https://github.com/facebookresearch/detectron2.git
+
+# Si necesitas CORS:
+python-multipart
