@@ -5,8 +5,8 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from PIL import Image
 import numpy as np
-import torch
-import cv2
+import torch # Asegúrate de que PyTorch esté instalado y sea compatible con NumPy
+import cv2 # Para la conversión BGR, si se usa
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultPredictor
 from detectron2 import model_zoo
@@ -14,10 +14,11 @@ from detectron2.data import MetadataCatalog
 from contextlib import asynccontextmanager # Necesario para la nueva forma de lifespan events
 
 # --- Configuración de la Aplicación FastAPI ---
-app = FastAPI(
-    title="Detectron2 Object Detection API",
-    description="API para detección de objetos con modelo Detectron2 (.pth) y descarga automática."
-)
+# Se recomienda crear la instancia de FastAPI *después* de definir el lifespan.
+# Sin embargo, para que el editor de texto no muestre errores de "no definido",
+# la instancia de FastAPI puede definirse al principio y luego se le asigna el lifespan.
+# La clave es que el parametro `lifespan` en FastAPI() es la forma correcta ahora.
+# app = FastAPI() # Esto se moverá al final del bloque de lifespan
 
 # --- Variables Globales y Constantes ---
 # Define las clases de tu conjunto de datos (Asegúrate de que coincidan con tu entrenamiento)
@@ -25,9 +26,11 @@ CLASS_NAMES = ["Ciprés", "Palo Santo", "Pino"]
 
 # Ruta donde se guardará el modelo dentro del contenedor Docker
 MODEL_FILENAME = "model_final.pth"
+# Usamos Path.join para una mejor compatibilidad con diferentes sistemas operativos
 MODEL_PTH_PATH = os.path.join(os.path.dirname(__file__), MODEL_FILENAME)
 
 # Variable global para el predictor (se cargará una sola vez)
+# Inicializar a None es una buena práctica
 predictor = None
 
 # --- Funciones de Utilidad ---
@@ -50,10 +53,10 @@ def descargar_modelo():
                 # *** Verificación de contenido HTML ***
                 # Leer los primeros bytes para verificar si es una página HTML
                 # Si es HTML, es probable que sea una página de error/advertencia de Google Drive.
-                first_chunk = r.iter_content(chunk_size=4096).__next__() # Lee el primer chunk
-                
-                # Intenta decodificar el chunk para buscar HTML
+                # Se lee un primer chunk para la detección de HTML y se reutiliza para la escritura.
+                first_chunk = b''
                 try:
+                    first_chunk = next(r.iter_content(chunk_size=4096))
                     decoded_chunk = first_chunk.decode('utf-8', errors='ignore').lower()
                     if '<!doctype html>' in decoded_chunk or '<html' in decoded_chunk:
                         # Si parece HTML, no es el archivo del modelo
@@ -63,9 +66,12 @@ def descargar_modelo():
                             f".pth. Posiblemente un error, advertencia o límite de descarga. "
                             f"Contenido inicial: {error_preview}..."
                         )
+                except StopIteration:
+                    # Si el archivo está vacío, raise un error
+                    raise RuntimeError("La descarga del modelo resultó en un archivo vacío.")
                 except UnicodeDecodeError:
                     # Si no se puede decodificar como UTF-8, probablemente es binario, lo cual es bueno.
-                    pass
+                    pass # Continúa con la descarga
 
                 # Si no es HTML, escribe los bytes leídos y el resto del contenido al archivo
                 with open(MODEL_PTH_PATH, "wb") as f:
@@ -94,11 +100,12 @@ def load_predictor_instance():
             cfg = get_cfg()
             # Usamos un modelo base de COCO, luego sobreescribimos las cabezas y pesos.
             # Asegúrate de que esta configuración base sea compatible con tu modelo .pth.
+            # Es vital que el archivo YAML base de Detectron2 sea compatible con la arquitectura de tu modelo entrenado.
             cfg.merge_from_file(model_zoo.get_config_file("COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"))
             cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(CLASS_NAMES)
             cfg.MODEL.WEIGHTS = MODEL_PTH_PATH
             cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5
-            cfg.MODEL.DEVICE = "cpu" # IMPORTE: Usamos CPU para Render (planes gratuitos)
+            cfg.MODEL.DEVICE = "cpu" # IMPORTANTE: Usamos CPU para Render (planes gratuitos)
 
             print("Cargando predictor Detectron2...")
             predictor = DefaultPredictor(cfg)
@@ -114,7 +121,7 @@ def load_predictor_instance():
             raise RuntimeError(f"Fallo al cargar el modelo: {e}. Asegúrate de que el .pth es válido y las dependencias están instaladas correctamente.")
     return predictor
 
-# --- Lifespan Events de FastAPI (Reemplaza @app.on_event) ---
+# --- Lifespan Events de FastAPI (REEMPLAZA @app.on_event) ---
 # Esta es la forma recomendada y más moderna de manejar eventos de inicio/apagado en FastAPI.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -138,7 +145,13 @@ async def lifespan(app: FastAPI):
         # Aquí puedes añadir lógica para limpiar recursos si es necesario
         pass # Por ahora no hay nada que limpiar explícitamente
 
-app.add_event_handler("startup", lifespan) # Registra el manejador de lifespan con la aplicación
+# --- Instancia de FastAPI ---
+# Aquí es donde se asigna el lifespan a la aplicación.
+app = FastAPI(
+    title="Detectron2 Object Detection API",
+    description="API para detección de objetos con modelo Detectron2 (.pth) y descarga automática.",
+    lifespan=lifespan # ¡Esta es la clave para el nuevo manejo de eventos!
+)
 
 # --- Endpoints de la API ---
 
@@ -159,11 +172,9 @@ async def predict(file: UploadFile = File(...)):
     Realiza la detección de objetos en una imagen subida.
     """
     # Asegurarse de que el predictor esté cargado (ya debería estarlo por el evento startup)
-    # Volver a llamarlo aquí es redundante si se usa lifespan, pero no dañino.
-    # Mejor quitar la llamada y solo usar 'predictor' directamente si confías en lifespan.
-    # No obstante, por seguridad defensiva, si el predictor es None, lo relanza.
+    # Una vez que la aplicación se inicia correctamente, 'predictor' no debería ser None.
     if predictor is None:
-        raise HTTPException(status_code=503, detail="El modelo no está listo. Intente de nuevo en un momento.")
+        raise HTTPException(status_code=503, detail="El modelo no está listo. La aplicación no pudo iniciar correctamente.")
 
     # Validar el tipo de archivo
     if not file.content_type.startswith("image/"):
@@ -172,8 +183,8 @@ async def predict(file: UploadFile = File(...)):
     try:
         image_bytes = await file.read()
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        # Detectron2 espera imágenes en formato BGR de OpenCV
-        image_np = np.array(image)[:, :, ::-1]
+        # Detectron2 espera imágenes en formato BGR de OpenCV (altura, ancho, canales)
+        image_np = np.array(image)[:, :, ::-1] # Convierte RGB a BGR
 
         # Realizar la inferencia
         outputs = predictor(image_np)
@@ -190,6 +201,11 @@ async def predict(file: UploadFile = File(...)):
             "classes": classes,
             "class_names": [CLASS_NAMES[cls_id] for cls_id in classes] # Añadir nombres de clase para la conveniencia
         })
+    except IndexError as e:
+        # Esto puede ocurrir si un cls_id no existe en CLASS_NAMES,
+        # indicando un problema con la configuración de las clases o el modelo.
+        print(f"ERROR: ID de clase fuera de rango en CLASS_NAMES: {e}")
+        raise HTTPException(status_code=500, detail=f"Error en la asignación de clases: {e}. Verifique CLASS_NAMES y el modelo.")
     except Exception as e:
         print(f"ERROR durante la inferencia o procesamiento de imagen: {e}")
         raise HTTPException(status_code=500, detail=f"Error interno del servidor durante la predicción: {e}")
