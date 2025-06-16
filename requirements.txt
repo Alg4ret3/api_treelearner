@@ -1,6 +1,4 @@
-# FastAPI para el backend
 fastapi
 uvicorn
-
-# Si necesitas CORS:
 python-multipart
+requests
