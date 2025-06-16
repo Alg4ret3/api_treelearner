@@ -36,11 +36,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # The '--index-url' points to the CPU-specific PyTorch wheels.
 RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu
 
-# Install Detectron2. Its installation requires 'git'.
-# We're using a specific commit hash for Detectron2 to ensure stability and reproducibility.
-# If you used a different version during training, you might need to adjust this commit hash.
-RUN pip install 'git+https://github.com/facebookresearch/detectron2.git@e05206979603348123c72b21703666b6c00d463b'
+# ... (código anterior) ...
 
+# Install Detectron2. Its installation requires 'git'.
+# --> ESTA ES LA LÍNEA CLAVE: Asegúrate de que quede así. <--
+RUN pip install --no-cache-dir 'git+https://github.com/facebookresearch/detectron2.git'
+
+# ... (código posterior) ...
 # Copy your 'app' folder (which contains 'main.py') into the container.
 # It will reside at '/app/app' inside the container.
 COPY app /app/app
