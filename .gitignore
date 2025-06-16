@@ -1,0 +1,36 @@
+# Archivos y carpetas de Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Archivos grandes y binarios
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.onnx
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Configs de entornos
+.env
+.venv/
+env/
+venv/
+.idea/
+.vscode/
+
+# Archivos de instalación
+pip-log.txt
+*.egg-info/
+build/
+dist/
+
+# Carpeta de resultados y salidas de entrenamiento
+output/
+logs/
+
+# Archivos temporales
+*.log

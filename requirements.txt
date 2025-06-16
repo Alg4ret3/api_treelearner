@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+Pillow
+torch
+opencv-python-headless
+numpy
+requests
+detectron2 @ git+https://github.com/facebookresearch/detectron2.git
