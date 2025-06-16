@@ -1,14 +1,17 @@
-# Usa una imagen base de Python. Python 3.9 es una buena opción para Detectron2.
-# python:3.9-slim-buster es adecuada para despliegues solo con CPU.
+# Use a Python base image. Python 3.9 is a good option for Detectron2 compatibility.
+# 'slim-buster' is a lightweight Debian-based image, suitable for CPU-only deployments.
 FROM python:3.9-slim-buster
 
-# Establecer el directorio de trabajo dentro del contenedor
-# La carpeta 'app' de tu proyecto se copiará a '/app/app'
+# Set the working directory inside the container.
+# Your 'app' folder (containing main.py) will be copied into '/app/app'.
 WORKDIR /app
 
-# Instalar dependencias del sistema necesarias
-# Esto es crucial para OpenCV y otras librerías que PyTorch/Detectron2 podrían necesitar.
-# --no-install-recommends ayuda a mantener el tamaño de la imagen reducido.
+# Install system-level dependencies.
+# These are crucial for OpenCV and other underlying libraries that PyTorch/Detectron2 might need.
+# 'build-essential' is for compiling, 'git' for cloning Detectron2,
+# 'libgl1-mesa-glx', 'libsm6', 'libxext6', 'libglib2.0-0' are common graphical/display libraries
+# that prevent headless environments from crashing when using image processing (like OpenCV).
+# '--no-install-recommends' helps keep the image size smaller.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
@@ -16,33 +19,38 @@ RUN apt-get update && \
     libgl1-mesa-glx \
     libsm6 \
     libxext6 \
-    libglib2.0-0 \ # A menudo necesaria para sistemas de visualización incluso sin GUI
-    # Limpieza para reducir el tamaño de la imagen
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    libglib2.0-0 && \
+    # Clean up APT cache to reduce the final image size.
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copiar requirements.txt e instalar las dependencias de Python
-# Esto se hace primero para aprovechar el caché de Docker si los requisitos no cambian.
+# Copy 'requirements.txt' first.
+# This leverages Docker's caching, so if only your code changes (not dependencies),
+# this step won't rerun unnecessarily, speeding up builds.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Instalar PyTorch y TorchVision.
-# --- IMPORTANTE: Estas líneas son para CPU-only (gratis en Render). ---
-# Asegúrate de que las versiones coincidan con lo que usaste en tu entrenamiento si es posible.
-# PyTorch 2.0.1 y Torchvision 0.15.2 son comunes con Detectron2.
+# Install PyTorch and TorchVision.
+# --- IMPORTANT: These lines are specifically for a CPU-only environment (like Render's free tier). ---
+# Ensure these versions are compatible with your Detectron2 training setup if possible.
+# The '--index-url' points to the CPU-specific PyTorch wheels.
 RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu
 
-# Instalar Detectron2. Su instalación requiere git.
-# Se usa un commit específico para estabilidad.
+# Install Detectron2. Its installation requires 'git'.
+# We're using a specific commit hash for Detectron2 to ensure stability and reproducibility.
+# If you used a different version during training, you might need to adjust this commit hash.
 RUN pip install 'git+https://github.com/facebookresearch/detectron2.git@e05206979603348123c72b21703666b6c00d463b'
 
-# Copiar la carpeta 'app' (que contiene main.py) al contenedor
-# Esto significa que main.py estará en /app/app/main.py
+# Copy your 'app' folder (which contains 'main.py') into the container.
+# It will reside at '/app/app' inside the container.
 COPY app /app/app
 
-# Exponer el puerto en el que correrá la aplicación FastAPI
-EXPOSE 8000 # Puerto común para Uvicorn/FastAPI
+# Expose the port on which your FastAPI application will listen.
+# Uvicorn, by default, often uses port 8000. Render will map its external port to this internal one.
+EXPOSE 8000
 
-# Comando para iniciar la aplicación FastAPI con Uvicorn
-# 'app.main:app' significa: desde el directorio '/app/app', encuentra 'main.py', y en 'main.py', encuentra el objeto 'app'.
+# Command to start the FastAPI application using Uvicorn.
+# 'app.main:app' tells Uvicorn to look for the 'app' object inside 'main.py', which is located in the 'app' directory.
+# '--host 0.0.0.0' makes the app listen on all available network interfaces.
+# '--port 8000' specifies the internal port for the application.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
