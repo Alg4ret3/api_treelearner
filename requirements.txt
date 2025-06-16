@@ -2,9 +2,5 @@
 fastapi
 uvicorn
 
-# PyTorch DEBE ir primero
-torch==2.1.0
-torchvision==0.16.0
-
 # Si necesitas CORS:
 python-multipart
