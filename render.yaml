@@ -2,6 +2,7 @@ services:
   - type: web
     name: detectron-api
     env: python
+    pythonVersion: 3.10
     plan: free
     region: oregon
     buildCommand: |
