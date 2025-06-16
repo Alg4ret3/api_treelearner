@@ -1,7 +1,7 @@
 fastapi
 uvicorn
-python-multipart
 requests
-pillow
+Pillow
 numpy
+torch
 opencv-python
