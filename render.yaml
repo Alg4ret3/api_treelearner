@@ -1,6 +1,19 @@
+# render.yaml
 services:
-  - type: web
-    name: detectron2-api
-    env: docker
-    plan: starter
-    autoDeploy: true
+  - type: web # Esto define un servicio web
+    name: detectron2-api # Un nombre para tu servicio
+    env: python # El entorno de lenguaje
+    # No se necesita buildCommand específico ya que Dockerfile maneja la construcción.
+    # El startCommand debe coincidir con el CMD de tu Dockerfile.
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    
+    # Tipo de instancia: "free" para la capa gratuita (CPU solamente).
+    plan: free 
+    
+    # Endpoint de verificación de salud para Render (lo hemos añadido en main.py)
+    healthCheckPath: /health
+    
+    # Opcional: Configuración de disco si tu modelo es muy grande y la descarga falla por espacio.
+    # El modelo se guarda dentro del contenedor. Si es muy grande, podría necesitarse un disco persistente.
+    # Pero el modelo se descarga cada vez que el contenedor se inicia, así que un disco persistente no ayuda con eso.
+    # Por ahora, confía en el sistema de archivos del contenedor.
