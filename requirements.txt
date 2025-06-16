@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-requests
-Pillow
-numpy
-torch
-opencv-python
