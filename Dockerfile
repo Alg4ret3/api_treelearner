@@ -55,4 +55,4 @@ EXPOSE 7860
 # 'app.main:app' tells Uvicorn to look for the 'app' object inside 'main.py', which is located in the 'app' directory.
 # '--host 0.0.0.0' makes the app listen on all available network interfaces.
 # '--port 8000' specifies the internal port for the application.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
