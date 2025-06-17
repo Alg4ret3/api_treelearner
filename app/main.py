@@ -42,8 +42,13 @@ def descargar_modelo():
     """
     if not os.path.exists(MODEL_PTH_PATH):
         print(f"Descargando el modelo desde Google Drive a: {MODEL_PTH_PATH}...")
-        # URL de descarga directa de Google Drive
-        url = "https://drive.google.com/uc?export=download&id=1kO8C4-YSRAp7Y9Yx-xcZWYW3erwa-TWi"
+        # URL de descarga directa
+        url = "https://huggingface.co/Alg4ret3/mi-modelo-detectron2-arboles/resolve/main/model_final.pth"
+        # ... (otras importaciones y configuraciones) ...
+
+
+# ... (resto de tu código, incluyendo la función descargar_modelo que usa MODEL_DOWNLOAD_URL) ...
+        
 
         try:
             # Usar stream=True y allow_redirects=True para manejar descargas grandes y redirecciones
