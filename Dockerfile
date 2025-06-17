@@ -48,8 +48,8 @@ RUN pip install --no-cache-dir 'git+https://github.com/facebookresearch/detectro
 COPY app /app/app
 
 # Expose the port on which your FastAPI application will listen.
-# Uvicorn, by default, often uses port 8000. Render will map its external port to this internal one.
-EXPOSE 8000
+
+EXPOSE 7860
 
 # Command to start the FastAPI application using Uvicorn.
 # 'app.main:app' tells Uvicorn to look for the 'app' object inside 'main.py', which is located in the 'app' directory.

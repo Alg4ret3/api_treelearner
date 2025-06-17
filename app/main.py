@@ -13,62 +13,48 @@ from detectron2 import model_zoo
 from detectron2.data import MetadataCatalog
 from contextlib import asynccontextmanager # Necesario para la nueva forma de lifespan events
 
-# --- Configuración de la Aplicación FastAPI ---
-# Se recomienda crear la instancia de FastAPI *después* de definir el lifespan.
-# Sin embargo, para que el editor de texto no muestre errores de "no definido",
-# la instancia de FastAPI puede definirse al principio y luego se le asigna el lifespan.
-# La clave es que el parametro `lifespan` en FastAPI() es la forma correcta ahora.
-# app = FastAPI() # Esto se moverá al final del bloque de lifespan
-
 # --- Variables Globales y Constantes ---
 # Define las clases de tu conjunto de datos (Asegúrate de que coincidan con tu entrenamiento)
 CLASS_NAMES = ["Ciprés", "Palo Santo", "Pino"]
 
 # Ruta donde se guardará el modelo dentro del contenedor Docker
 MODEL_FILENAME = "model_final.pth"
-# Usamos Path.join para una mejor compatibilidad con diferentes sistemas operativos
-MODEL_PTH_PATH = os.path.join(os.path.dirname(__file__), MODEL_FILENAME)
+# CAMBIO CLAVE: Usamos /tmp/ que es un directorio writable en contenedores
+MODEL_PTH_PATH = os.path.join("/tmp", MODEL_FILENAME) 
 
 # Variable global para el predictor (se cargará una sola vez)
-# Inicializar a None es una buena práctica
 predictor = None
 
 # --- Funciones de Utilidad ---
 
 def descargar_modelo():
     """
-    Descarga el modelo .pth desde Google Drive si no existe.
-    Incluye una verificación para detectar si la descarga es una página HTML de error.
+    Descarga el modelo .pth desde Hugging Face Hub si no existe.
+    Incluye una verificación para detectar si la descarga es una página HTML inesperada.
     """
     if not os.path.exists(MODEL_PTH_PATH):
-        print(f"Descargando el modelo desde Google Drive a: {MODEL_PTH_PATH}...")
-        # URL de descarga directa
+        print(f"Descargando el modelo desde Hugging Face a: {MODEL_PTH_PATH}...")
+        # URL de descarga directa desde Hugging Face Hub (¡CONFIRMADO!)
         url = "https://huggingface.co/Alg4ret3/mi-modelo-detectron2-arboles/resolve/main/model_final.pth"
-        # ... (otras importaciones y configuraciones) ...
-
-
-# ... (resto de tu código, incluyendo la función descargar_modelo que usa MODEL_DOWNLOAD_URL) ...
         
-
         try:
+            # Crea el directorio /tmp si no existe (aunque suele existir)
+            os.makedirs(os.path.dirname(MODEL_PTH_PATH), exist_ok=True) 
+
             # Usar stream=True y allow_redirects=True para manejar descargas grandes y redirecciones
             with requests.get(url, stream=True, allow_redirects=True) as r:
                 r.raise_for_status() # Lanza un HTTPError para códigos de estado 4xx/5xx
 
                 # *** Verificación de contenido HTML ***
-                # Leer los primeros bytes para verificar si es una página HTML
-                # Si es HTML, es probable que sea una página de error/advertencia de Google Drive.
-                # Se lee un primer chunk para la detección de HTML y se reutiliza para la escritura.
                 first_chunk = b''
                 try:
                     first_chunk = next(r.iter_content(chunk_size=4096))
                     decoded_chunk = first_chunk.decode('utf-8', errors='ignore').lower()
                     if '<!doctype html>' in decoded_chunk or '<html' in decoded_chunk:
                         # Si parece HTML, no es el archivo del modelo
-                        error_preview = decoded_chunk[:500].replace('\n', ' ') # Previsualizar el error HTML
+                        error_preview = decoded_chunk[:500].replace('\n', ' ') 
                         raise RuntimeError(
-                            f"La URL de Google Drive devolvió una página HTML en lugar del archivo "
-                            f".pth. Posiblemente un error, advertencia o límite de descarga. "
+                            f"La URL de Hugging Face devolvió una página HTML inesperada. "
                             f"Contenido inicial: {error_preview}..."
                         )
                 except StopIteration:
@@ -83,16 +69,16 @@ def descargar_modelo():
                     f.write(first_chunk) # Escribe el primer chunk que ya leímos
                     for chunk in r.iter_content(chunk_size=8192): # Continúa escribiendo el resto
                         f.write(chunk)
-            print("Modelo descargado exitosamente.")
+            print("Modelo descargado exitosamente de Hugging Face.")
 
         except requests.exceptions.RequestException as e:
-            print(f"ERROR: Fallo en la descarga HTTP del modelo: {e}")
-            raise RuntimeError(f"Fallo al descargar el modelo: {e}. Verifica la URL y la conexión a internet.")
+            print(f"ERROR: Fallo en la descarga HTTP del modelo desde Hugging Face: {e}")
+            raise RuntimeError(f"Fallo al descargar el modelo: {e}. Verifica la URL y la conexión.")
         except RuntimeError as e:
             print(f"ERROR: {e}")
             raise # Relanza el RuntimeError para que FastAPI lo capture
     else:
-        print("El modelo ya existe en el contenedor. No es necesaria la descarga.")
+        print(f"El modelo ya existe en el contenedor en {MODEL_PTH_PATH}. No es necesaria la descarga.")
 
 def load_predictor_instance():
     """
@@ -105,18 +91,16 @@ def load_predictor_instance():
             cfg = get_cfg()
             # Usamos un modelo base de COCO, luego sobreescribimos las cabezas y pesos.
             # Asegúrate de que esta configuración base sea compatible con tu modelo .pth.
-            # Es vital que el archivo YAML base de Detectron2 sea compatible con la arquitectura de tu modelo entrenado.
             cfg.merge_from_file(model_zoo.get_config_file("COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"))
             cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(CLASS_NAMES)
             cfg.MODEL.WEIGHTS = MODEL_PTH_PATH
             cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5
-            cfg.MODEL.DEVICE = "cpu" # IMPORTANTE: Usamos CPU para Render (planes gratuitos)
+            cfg.MODEL.DEVICE = "cpu" # IMPORTANTE: Usamos CPU para Hugging Face Spaces (planes gratuitos)
 
             print("Cargando predictor Detectron2...")
             predictor = DefaultPredictor(cfg)
 
-            # Registra los metadatos de las clases si tu modelo fue entrenado con clases específicas
-            # Esto es útil si usaras Visualizer, aunque no directamente para el JSON de la API.
+            # Registra los metadatos de las clases
             MetadataCatalog.get("my_dataset_for_api").set(thing_classes=CLASS_NAMES)
             
             print("Predictor Detectron2 cargado exitosamente.")
@@ -126,8 +110,7 @@ def load_predictor_instance():
             raise RuntimeError(f"Fallo al cargar el modelo: {e}. Asegúrate de que el .pth es válido y las dependencias están instaladas correctamente.")
     return predictor
 
-# --- Lifespan Events de FastAPI (REEMPLAZA @app.on_event) ---
-# Esta es la forma recomendada y más moderna de manejar eventos de inicio/apagado en FastAPI.
+# --- Lifespan Events de FastAPI ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -141,17 +124,11 @@ async def lifespan(app: FastAPI):
         yield # La aplicación está lista para recibir solicitudes
     except RuntimeError as e:
         print(f"CRÍTICO: La aplicación no pudo iniciarse debido a un error de carga del modelo: {e}")
-        # En un entorno de producción real, aquí podrías querer un mejor manejo,
-        # pero para Render, el error durante el inicio causará un fallo de despliegue.
-        # Re-lanzar la excepción para que el proceso de Uvicorn falle.
-        raise
+        raise # Re-lanzar la excepción para que el proceso de Uvicorn falle.
     finally:
         print("Apagando la aplicación...")
-        # Aquí puedes añadir lógica para limpiar recursos si es necesario
-        pass # Por ahora no hay nada que limpiar explícitamente
 
 # --- Instancia de FastAPI ---
-# Aquí es donde se asigna el lifespan a la aplicación.
 app = FastAPI(
     title="Detectron2 Object Detection API",
     description="API para detección de objetos con modelo Detectron2 (.pth) y descarga automática.",
@@ -160,15 +137,14 @@ app = FastAPI(
 
 # --- Endpoints de la API ---
 
-# Endpoint de salud para Render
+# Endpoint de salud para Render / Hugging Face Spaces
 @app.get("/health")
 async def health_check():
     """Verifica si la API está en línea y el modelo ha sido cargado."""
     if predictor is not None:
         return {"status": "ok", "message": "API está en línea y el modelo cargado."}
     else:
-        # Esto podría ocurrir si el modelo aún no ha terminado de cargar o hubo un error crítico
-        raise HTTPException(status_code=503, detail="Modelo no cargado o falló al cargar.")
+        raise HTTPException(status_code=503, detail="Modelo no cargado o falló al cargar. Verifique logs.")
 
 # Endpoint de predicción
 @app.post("/predict/")
@@ -176,8 +152,6 @@ async def predict(file: UploadFile = File(...)):
     """
     Realiza la detección de objetos en una imagen subida.
     """
-    # Asegurarse de que el predictor esté cargado (ya debería estarlo por el evento startup)
-    # Una vez que la aplicación se inicia correctamente, 'predictor' no debería ser None.
     if predictor is None:
         raise HTTPException(status_code=503, detail="El modelo no está listo. La aplicación no pudo iniciar correctamente.")
 
@@ -207,8 +181,6 @@ async def predict(file: UploadFile = File(...)):
             "class_names": [CLASS_NAMES[cls_id] for cls_id in classes] # Añadir nombres de clase para la conveniencia
         })
     except IndexError as e:
-        # Esto puede ocurrir si un cls_id no existe en CLASS_NAMES,
-        # indicando un problema con la configuración de las clases o el modelo.
         print(f"ERROR: ID de clase fuera de rango en CLASS_NAMES: {e}")
         raise HTTPException(status_code=500, detail=f"Error en la asignación de clases: {e}. Verifique CLASS_NAMES y el modelo.")
     except Exception as e:
